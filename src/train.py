@@ -35,7 +35,7 @@ class PriceNet(nn.Module):
         )
         
         self.attn_layer1 = nn.MultiheadAttention(
-            embed_dim = 85,
+            embed_dim = 50,
             num_heads = 5,
             dropout = 0.2,
             batch_first=True,
@@ -48,14 +48,14 @@ class PriceNet(nn.Module):
         )
 
         self.attn_layer2 = nn.MultiheadAttention(
-            embed_dim = 40,
+            embed_dim = 100,
             num_heads = 4,
             dropout = 0.2,
             batch_first=True,
         )
 
         self.flatten_and_transform = nn.Sequential(
-            nn.Flatten(1, 2),  # (M*N, 100 * 40)  -> (M*N, 200)
+            nn.Flatten(1, 2),  # (M*N, 40 * 100)  -> (M*N, 200)
             nn.Linear(in_features=4000, out_features=200)
         )
 
@@ -79,9 +79,12 @@ class PriceNet(nn.Module):
         out = torch.flatten(X, 0, 1)  # (M, N, time) -> (M*N, time)
         out = torch.unsqueeze(out, dim=1)  # -> (M*N, 1, time)
         out = self.conv_layer1(out)  # -> (M*N, 50, 85)
-        out, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 50, 85)
+        out = torch.transpose(out, 1, 2)  # -> (M*N, 85, 50)
+        out, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 85, 50)
+        out = torch.transpose(out, 1, 2)  # -> (M*N, 50, 85)
         out = self.conv_layer2(out)  # -> (M*N, 100, 40)
-        out, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 100, 40)
+        out = torch.transpose(out, 1, 2)  # -> (M*N, 40, 100)
+        out, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 40, 100)
         out = self.flatten_and_transform(out)  # -> (M*N, 200)
         out = out.reshape(M, N, out.shape[1])  # -> (M, N, 200)
         out, _ = self.attn_layer3(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
@@ -109,15 +112,15 @@ class CryptoTrainer:
     def forward_pass(self, X, y):
         y_pred = self.model(X)
         loss = self.criterion(y_pred, y)
-        return loss
+        return loss, y_pred
     
     def test(self, X_test, y_test):
         with torch.no_grad():
-            test_loss = self.forward_pass(X_test, y_test)
-        return test_loss.item()  
+            test_loss, y_pred = self.forward_pass(X_test, y_test)
+        return test_loss.item(), y_pred
     
     def train(self, X_train, y_train):
-        train_loss = self.forward_pass(X_train, y_train)
+        train_loss, y_pred = self.forward_pass(X_train, y_train)
         train_loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
@@ -126,9 +129,8 @@ class CryptoTrainer:
     def eval(self, X_test, y_test):
         assert (self.mins is not None) and (self.maxs is not None)
         
-        with torch.no_grad():
-            y_pred = self.model(X_test)
-        
+        test_loss, y_pred = self.test(X_test, y_test)
+
         x_test_ori = inverse_minmax_scale(X_test[:, :, [-1]].numpy(), self.mins, self.maxs)
         y_test_ori = inverse_minmax_scale(y_test.numpy(), self.mins, self.maxs)
         y_pred_ori = inverse_minmax_scale(y_pred.numpy(), self.mins, self.maxs)
@@ -138,7 +140,7 @@ class CryptoTrainer:
         real_frac = (y_test_ori - x_test_ori) / x_test_ori
         weighting = np.abs(pred_frac)/np.sum(np.abs(pred_frac), axis=1).reshape(pred_frac.shape[0], 1, 1)
         aver_winrate = np.mean(np.sum(np.sign(pred_frac) * real_frac * weighting, axis=1))
-        return aver_winrate, (x_test_ori, y_test_ori, y_pred_ori)
+        return test_loss, aver_winrate, (x_test_ori, y_test_ori, y_pred_ori)
         
 
 def train(input_data_pth: str, input_minmax_pth: str, batch_size:int, epochs: int):
@@ -148,7 +150,7 @@ def train(input_data_pth: str, input_minmax_pth: str, batch_size:int, epochs: in
     remote_server_uri = "http://127.0.0.1:8080/"  # set to your server URI
     mlflow.set_tracking_uri(remote_server_uri)
     mlflow.set_experiment("KrakenCrpytoRegression")
-    mlflow.start_run()
+    mlflow.start_run(run_name='only_attendseq')
     mlflow.log_param('batch_size', batch_size)
     mlflow.log_param('epochs', epochs)
 
@@ -170,14 +172,12 @@ def train(input_data_pth: str, input_minmax_pth: str, batch_size:int, epochs: in
 
         trainer.model.eval()
         for X_test, y_test in dataloader_test:
-            test_loss = trainer.test(X_test, y_test)
-            test_loss_list.append(test_loss)
-
-        aver_winrate, _ = trainer.eval(X_test, y_test)
+            pass
+        test_loss, aver_winrate, _ = trainer.eval(X_test, y_test)
 
         # Log metrics
         mlflow.log_metric('train_loss', np.mean(train_loss_list), step=epoch)
-        mlflow.log_metric('test_loss', np.mean(test_loss_list), step=epoch)
+        mlflow.log_metric('test_loss', test_loss, step=epoch)
         mlflow.log_metric('aver_winrate', aver_winrate, step=epoch)
 
 
