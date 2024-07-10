@@ -22,73 +22,75 @@ class KrankenDataSet(Dataset):
     def __getitem__(self, idx):
         
         return self.X[idx, ...], self.y[idx, ...]
-    
 
 class PriceNet(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.conv_layer1 = nn.Sequential(
-            nn.Conv1d(in_channels=1, out_channels=50, kernel_size=6, stride=1),
+            nn.Conv1d(in_channels=1, out_channels=50, kernel_size=6, stride=2),  # -> (, 50, 43)
             nn.BatchNorm1d(num_features=50),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
         )
         
-        self.attn_layer1 = nn.MultiheadAttention(
-            embed_dim = 50,
-            num_heads = 5,
-            dropout = 0.2,
-            batch_first=True,
-        )
 
         self.conv_layer2 = nn.Sequential(
-            nn.Conv1d(in_channels=50, out_channels=100, kernel_size=7, stride=2),
+            nn.Conv1d(in_channels=50, out_channels=100, kernel_size=7, stride=2),  # -> (, 100, 19)
             nn.BatchNorm1d(num_features=100),
             nn.ReLU(),
+            nn.Dropout(p=0.2),
         )
 
-        self.attn_layer2 = nn.MultiheadAttention(
-            embed_dim = 100,
-            num_heads = 4,
-            dropout = 0.2,
-            batch_first=True,
-        )
 
         self.flatten_and_transform = nn.Sequential(
-            nn.Flatten(1, 2),  # (M*N, 40 * 100)  -> (M*N, 200)
-            nn.Linear(in_features=4000, out_features=200)
+            nn.Flatten(1, 2),  # -> (M*N, 1900)  
+            nn.Linear(in_features=1900, out_features=200)  # -> (M*N, 200)
         )
 
-        self.attn_layer3 = nn.MultiheadAttention(
+        # -> (M, N, 200)
+        self.attn_layer1 = nn.MultiheadAttention(
             embed_dim = 200,
             num_heads = 5,
             dropout = 0.2,
             batch_first=True,
-        )
+        )  # -> (M, N, 200)
 
-        self.linear_layer = nn.Sequential(
+        self.linear_layer_1 = nn.Sequential(
+            nn.Linear(in_features=200, out_features=200),
+            nn.LayerNorm((183, 200)),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+        ) # -> (M, N, 200)
+
+        self.attn_layer2 = nn.MultiheadAttention(
+            embed_dim = 200,
+            num_heads = 5,
+            dropout = 0.2,
+            batch_first=True,
+        )  # -> (M, N, 200)
+
+
+        self.linear_layer_final = nn.Sequential(
             nn.Linear(in_features=200, out_features=50),
             nn.ReLU(),
             nn.Dropout(p=0.2),
             nn.Linear(in_features=50, out_features=1),
-            )
+        ) # -> (M, N, 1)
 
     def forward(self, X):
         # X: (M, N, time)
         M, N, _ = X.shape
         out = torch.flatten(X, 0, 1)  # (M, N, time) -> (M*N, time)
         out = torch.unsqueeze(out, dim=1)  # -> (M*N, 1, time)
-        out = self.conv_layer1(out)  # -> (M*N, 50, 85)
-        out = torch.transpose(out, 1, 2)  # -> (M*N, 85, 50)
-        out, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 85, 50)
-        out = torch.transpose(out, 1, 2)  # -> (M*N, 50, 85)
-        out = self.conv_layer2(out)  # -> (M*N, 100, 40)
-        out = torch.transpose(out, 1, 2)  # -> (M*N, 40, 100)
-        out, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M*N, 40, 100)
+        out = self.conv_layer1(out)  # -> (M*N, 50, 43)
+        out = self.conv_layer2(out)  # -> (M*N, 100, 19)
         out = self.flatten_and_transform(out)  # -> (M*N, 200)
         out = out.reshape(M, N, out.shape[1])  # -> (M, N, 200)
-        out, _ = self.attn_layer3(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
-        out = self.linear_layer(out)  # -> (M, N, 1)
+        out, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
+        out = self.linear_layer_1(out)
+        out, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
+        out = self.linear_layer_final(out)  # (M, N, 200) -> (M, N, 1)
 
         return out
     
@@ -150,7 +152,7 @@ def train(input_data_pth: str, input_minmax_pth: str, batch_size:int, epochs: in
     remote_server_uri = "http://127.0.0.1:8080/"  # set to your server URI
     mlflow.set_tracking_uri(remote_server_uri)
     mlflow.set_experiment("KrakenCrpytoRegression")
-    mlflow.start_run(run_name='only_attendseq')
+    mlflow.start_run(run_name='NoSeqAttend_NoRes_NoAvgpool_attn+1')
     mlflow.log_param('batch_size', batch_size)
     mlflow.log_param('epochs', epochs)
 
@@ -187,6 +189,11 @@ def train(input_data_pth: str, input_minmax_pth: str, batch_size:int, epochs: in
     mlflow.end_run()
 
 if __name__ == '__main__':
-    input_data_pth = 'data/train_test_data.npz'
-    input_minmax_pth = 'data/minmax.csv'
-    train(input_data_pth, input_minmax_pth, 32, 20)
+    # input_data_pth = 'data/train_test_data.npz'
+    # input_minmax_pth = 'data/minmax.csv'
+    # train(input_data_pth, input_minmax_pth, 32, 20)
+
+
+    model = PriceNet()
+    y = model(torch.rand(10, 183, 90))
+    y.shape
