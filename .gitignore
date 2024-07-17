@@ -1,4 +1,4 @@
 data/
-src/__pycache__
 mlruns/
 mlartifacts/
+*/__pycache__
