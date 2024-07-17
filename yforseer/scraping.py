@@ -4,12 +4,13 @@ import os
 from os.path import join
 from datetime import datetime, timezone
 import time
+import logging
 
 def load_ticker_list(pth: str) -> list[str]:
-    ticker_list = pd.read_csv(pth)['ticker_name'].to_list()
+    ticker_list = pd.read_csv(pth)['ticker_code'].to_list()
     return ticker_list
 
-Schema = {
+RawDF_Schema = {
     'Date': 'datetime64[ns, Europe/Berlin]',
     'Open': 'float64',
     'High': 'float64',
@@ -34,9 +35,7 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
     '''
     N = len(ticker_list)
     for i, ticker_name in enumerate(ticker_list):
-
-        print('%d/%d: %s'%(i, N, ticker_name))
-
+        logging.info('%d/%d: %s'%(i, N, ticker_name))
 
         ticker = yf.Ticker(ticker_name)
         csv_pth = join(data_dir, f'{ticker_name}.csv')
@@ -44,17 +43,17 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
         today = datetime.now().date()
 
         if os.path.exists(csv_pth):
-            print('Existing %s table found.'%(ticker_name))
+            logging.info('Existing %s table found.'%(ticker_name))
 
             df = pd.read_csv(csv_pth, index_col=0)
-            df = df.astype(Schema)
+            df = df.astype(RawDF_Schema)
             latest_datetime = df['Date'].max()  
             latest_day = latest_datetime.date() 
             endday = today - pd.Timedelta(days=1)
             if latest_day >= endday:
-                print(f'{ticker_name} is up to date. Last UTC date is {str(latest_day)} >= {endday}.')
+                logging.info(f'{ticker_name} is up to date. Last UTC date is {str(latest_day)} >= {endday}.')
             else:
-                print(f'{ticker_name} = {str(latest_day)}, while today is {today}')
+                logging.info(f'{ticker_name} = {str(latest_day)}, while today is {today}')
 
                 start_scrape_day = latest_day + pd.Timedelta(days=1)  # in DE time
                 hist = ticker.history(
@@ -64,18 +63,19 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
                     start= start_scrape_day,  # Inclusive, so starting one day after the last day.
                     repair=True)
                 hist.reset_index(inplace=True)
-                hist = hist.astype(Schema)
-                print('Extracted date %s to %s'%(str(hist['Date'].min().date()), str(hist['Date'].max().date())))
+                hist = hist.astype(RawDF_Schema)
+                logging.info('Extracted date %s to %s'%(str(hist['Date'].min().date()), str(hist['Date'].max().date())))
                 df2 = pd.concat([df, hist], ignore_index=True)
                 df2.to_csv(csv_pth)
 
         else:
-            print('Downloading %s for the whole period'%(ticker_name))
+            logging.info('Downloading %s for the whole period'%(ticker_name))
             hist = ticker.history(interval = '1d', period = None, end=today, repair=True)
             hist.reset_index(inplace=True)
-            hist = hist.astype(Schema)
+            hist = hist.astype(RawDF_Schema)
             hist.to_csv(csv_pth)
 
+        logging.debug('Sleeping for %d seconds'%(sleep_time))
         time.sleep(sleep_time)
 
 if __name__ == '__main__':
