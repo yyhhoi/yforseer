@@ -66,14 +66,14 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
                 hist = hist.astype(RawDF_Schema)
                 logging.info('Extracted date %s to %s'%(str(hist['Date'].min().date()), str(hist['Date'].max().date())))
                 df2 = pd.concat([df, hist], ignore_index=True)
-                df2.to_csv(csv_pth)
+                df2.to_csv(csv_pth, index=False)
 
         else:
             logging.info('Downloading %s for the whole period'%(ticker_name))
             hist = ticker.history(interval = '1d', period = None, end=today, repair=True)
             hist.reset_index(inplace=True)
             hist = hist.astype(RawDF_Schema)
-            hist.to_csv(csv_pth)
+            hist.to_csv(csv_pth, index=False)
 
         logging.debug('Sleeping for %d seconds'%(sleep_time))
         time.sleep(sleep_time)

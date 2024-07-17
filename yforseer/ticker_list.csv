@@ -1,12 +1,12 @@
-ticker_id, ticker_code,ticker_name
-0,NVD.DE,NVIDIA
-1,MBG.DE,Mercedes-Benz Group
-2,MSF.DE,Microsoft
-3,APC.DE,Apple
-4,1COV.DE,Covestro AG
-5,AMZ.DE,Amazon
-6,ALV.DE,Allianz
-7,RHM.DE,Rheinmetall
-8,BAS.DE,BASF
-9,VOW3.DE,Volkswagen (Vz.)
-10,DHL.DE,DHL Group
+ticker_code,ticker_name
+NVD.DE,NVIDIA
+MBG.DE,Mercedes-Benz Group
+MSF.DE,Microsoft
+APC.DE,Apple
+1COV.DE,Covestro AG
+AMZ.DE,Amazon
+ALV.DE,Allianz
+RHM.DE,Rheinmetall
+BAS.DE,BASF
+VOW3.DE,Volkswagen (Vz.)
+DHL.DE,DHL Group
