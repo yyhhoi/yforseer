@@ -45,7 +45,7 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
         if os.path.exists(csv_pth):
             logging.info('Existing %s table found.'%(ticker_name))
 
-            df = pd.read_csv(csv_pth, index_col=0)
+            df = pd.read_csv(csv_pth)
             df = df.astype(RawDF_Schema)
             latest_datetime = df['Date'].max()  
             latest_day = latest_datetime.date() 
