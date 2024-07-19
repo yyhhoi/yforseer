@@ -7,7 +7,14 @@ import time
 import logging
 
 def load_ticker_list(pth: str) -> list[str]:
-    ticker_list = pd.read_csv(pth)['ticker_code'].to_list()
+    # Load the ticker list
+    ticker_df = pd.read_csv(pth)
+    ticker_list = ticker_df['ticker_code'].to_list()
+
+    # Check for duplicates
+    dup_df = ticker_df[ticker_df['ticker_code'].duplicated(keep=False)]
+    print('Duplicated tickers:')
+    print(dup_df)
     return ticker_list
 
 RawDF_Schema = {
@@ -52,6 +59,7 @@ def update_raw_tables(data_dir, ticker_list, sleep_time=30):
             endday = today - pd.Timedelta(days=1)
             if latest_day >= endday:
                 logging.info(f'{ticker_name} is up to date. Last UTC date is {str(latest_day)} >= {endday}.')
+                continue
             else:
                 logging.info(f'{ticker_name} = {str(latest_day)}, while today is {today}')
 

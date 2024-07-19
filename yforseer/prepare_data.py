@@ -5,7 +5,8 @@ import os
 import pandas as pd
 import numpy as np
 import logging
-
+from datetime import datetime
+from .utils import print_title
 
 CombinedDF_Schema = {
     'ticker_id': 'int64',
@@ -53,48 +54,68 @@ def combine_raw_csvs(raw_data_dir: str, save_df_pth: str) -> None:
     combined_df[reordered_cols].to_csv(save_df_pth, index=False)
 
 
-def extract_features(combined_df_pth:str, save_npz_pth:str, memory:int = 30, lookahead:int = 30) -> None:
-    """Extract features and target from the combined dataframe. It performs the following steps:
-    1. Find the start datetime for a consistent time period across all tickers.
-    2. Expand the dataframe rows to include all business days as Null.
-    3. Interpolate missing values.
-    4. Extract features (30 days price before).
-    5. Extract targets (30th day price after, max, min, mean in the lookahead period).
-    6. Normalize the prices for each ticker.
+def determine_start_date(combined_df_pth: str) -> pd.Timestamp:
+    '''
+    - Find the start datetime for a consistent time period across all tickers.
+    '''
+    print_title('Determine the best min date ')
+    # Load data
+    combined_df = pd.read_csv(combined_df_pth).astype(CombinedDF_Schema)
+    
+    # Min dates for tickers
+    min_dates = combined_df.groupby('ticker_code').apply(lambda x: x['Date'].min())
+    min_dates.sort_values(inplace=True)
+
+    # Precalculate all business days
+    start_date = min_dates.min()
+    end_date = pd.Timestamp(datetime.now(), tz='Europe/Berlin')
+    all_datetimes = pd.date_range(start=start_date, end=end_date, freq='B')
+
+    # Compute the number of data points for each min date
+    data_points = []
+    for mindate in min_dates:
+        N = (min_dates <= mindate).sum()
+        D = (all_datetimes >= mindate).sum()
+        data_points.append(N*D)
+
+    # Best min date with the most data points
+    max_ind = np.argmax(data_points)
+    best_min_date = min_dates.iloc[max_ind]
+    N = (min_dates <= best_min_date).sum()
+
+    # Check the results
+    print(pd.DataFrame({'min_dates': min_dates, 'data_points': data_points}))
+    print(f'Best min date = {best_min_date}')
+    print('Included tickers = %d' % (N))
+    return best_min_date
+
+def convert_to_array(combined_df_pth:str, start_datetime: pd.Timestamp,
+                     save_npz_pth: str) -> None:
+    """Convert the combined dataframe to a numpy array. It performs the following steps:
+
+
+    1. Expand the dataframe rows to include all business days as Null.
+    2. Interpolate missing values.
+    3. Normalize the prices for each ticker.
 
     Parameters
     ----------
     combined_df_pth : str
-    
-    save_npz_pth : str
-    
-    memory : int, optional
-        Number of days to look back for prediction, by default 30.
 
-    lookahead : int, optional
-        Number of days to look forward for prediction, by default 30.
+    start_datetime : pd.Timestamp
+
+    save_npz_pth : str
 
     """
+
+    print_title('Convert to array')
+
     # Load data
     combined_df = pd.read_csv(combined_df_pth).astype(CombinedDF_Schema)
-    
-    # ============================
-    # Find the start datetime
-    # ============================
-    max_datetime = combined_df['Date'].min()
-    for ticker_code, ticker_df in combined_df.groupby('ticker_code'):
-        ticker_mindate = ticker_df['Date'].min()
-        if ticker_mindate > max_datetime:
-            max_datetime = ticker_mindate
-    start_datetime = max_datetime
 
-
-    # ============================
-    # Convert dataframe to arrays
-    # ============================
-    X_list, y_list = [], []
-    total_end = combined_df['Date'].max()
-    norm_table_dict = {'ticker_code':[], 'max_val':[], 'min_val':[]}
+    # Loop for each ticker
+    ticker_array= []
+    all_ticker_codes = []
     for ticker_code, ticker_df in combined_df.groupby('ticker_code'):
 
         # Slice the dataframe from the start datetime
@@ -113,64 +134,24 @@ def extract_features(combined_df_pth:str, save_npz_pth:str, memory:int = 30, loo
         tmpdf['ticker_code'] = tmpdf['ticker_code'].ffill().astype(str)
         tmpdf['Close'] = tmpdf['Close'].interpolate(method='linear')
         tmpdf.reset_index(inplace=True)
+        ticker_array.append(tmpdf['Close'].values)
+        all_ticker_codes.append(ticker_code)
         print(f'{ticker_code} has {Nnan}/{Nrows} = {Nnan/Nrows:0.4f} missing values, filled with interpolation.')
-
-
-        # Organize into array
-        lpt = 0
-        total_end = tmpdf.index[-1]
-        x_ticker_tmp = []
-        y_ticker_tmp = []
-        while True:
-            memory_end = lpt + memory
-            target = memory_end + lookahead
-            if target > (total_end):
-                break
-
-            # ================================
-            # Extract features X and target y
-            # ================================
-            memory_mask = (tmpdf.index >= lpt) & (tmpdf.index < memory_end)
-            lookahead_mask = (tmpdf.index >= memory_end) & (tmpdf.index <= target)
-            x_tmp = tmpdf.loc[memory_mask, 'Close'].values.copy()  # (t, )
-            y_tmp = tmpdf.iloc[target]['Close'].item()  # scalar
-            lookahead_prices = tmpdf.loc[lookahead_mask, 'Close']
-            ymax_tmp = lookahead_prices.max()  # scalar
-            ymin_tmp = lookahead_prices.min()  # scalar
-            ymu_tmp = lookahead_prices.mean()  # scalar
-
-            x_ticker_tmp.append(x_tmp)
-            y_ticker_tmp.append(np.array([y_tmp, ymax_tmp, ymin_tmp, ymu_tmp]))
-            lpt += 1
-            
-        X_ticker = np.stack(x_ticker_tmp, axis=0)  # (n, t)
-        y_ticker = np.stack(y_ticker_tmp, axis=0)  # (n, 4)
-
-        # ================================
-        # Normalize
-        # ================================
-        max_val = tmpdf['Close'].max()
-        min_val = tmpdf['Close'].min()
-        X_ticker = (X_ticker - min_val) / (max_val - min_val)
-        y_ticker = (y_ticker - min_val) / (max_val - min_val)
-        norm_table_dict['ticker_code'].append(ticker_code)
-        norm_table_dict['max_val'].append(max_val)
-        norm_table_dict['min_val'].append(min_val)
-
-        X_list.append(X_ticker)
-        y_list.append(y_ticker)
-
+    
     # Stack the arrays
-    Xtmp = np.stack(X_list)  # (NumNames, M, t)
-    ytmp = np.stack(y_list)  # (NumNames, M, 4)
-    X = np.transpose(Xtmp, (1, 0, 2))  # (M, NumNames, t,)
-    y = np.transpose(ytmp, (1, 0, 2))  # (M, NumNames, 4,)
-    norm_table = pd.DataFrame(norm_table_dict)
+    ticker_array = np.stack(ticker_array)
 
-    print("X's shape = \n%s" % str(X.shape))
-    print("y's shape = \n%s" % str(y.shape))
+    # ================================
+    # Normalize
+    # ================================
+    mu = ticker_array.mean(axis=0)
+    std = ticker_array.std(axis=0)
+    ticker_array = (ticker_array - mu) / std
+    print('Ticker array shape = %s' % str(ticker_array.shape))
 
-    # Save the data
-    np.savez(save_npz_pth, X=X, y=y)
-    save_norm_pth = join(os.path.splitext(save_npz_pth)[0] + '_norm.csv')
-    norm_table.to_csv(save_norm_pth, index=False)
+    # ================================
+    # Save data
+    # ================================
+    np.savez(save_npz_pth, data=ticker_array, mu=mu, std=std, ticker_codes=all_ticker_codes)
+    print('Array saved at %s' % save_npz_pth)
+
