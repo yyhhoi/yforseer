@@ -2,20 +2,18 @@ import torch
 from torch.utils.data import Dataset
 
 class StockDataset(Dataset):
-    def __init__(self, data, memory, lookahead, mode, noise=False):
+    def __init__(self, data, memory, lookahead, mode, transform=None):
         self.data = data  # (N_tickers, N_days), torch.tensor, float32
         self.memory = memory
         self.lookahead = lookahead
         self.mode = mode  # last/all/stats
-        self.noise = noise
+        self.transform = transform
         self.window = memory + lookahead
         self.n_tickers = self.data.shape[0]
         self.n_days = self.data.shape[1]
         self.final_start_ind = self.n_days - self.window
         self.n_samples = self.final_start_ind + 1
 
-        # Noise
-        self.stds = torch.std(self.data, dim=1).reshape(-1, 1) / 10
 
         
     def __len__(self):
@@ -27,9 +25,13 @@ class StockDataset(Dataset):
         if end > self.n_days:
             raise IndexError('Index out of bounds')
         
+        # Features
         X = self.data[:, start:mid]
-        if self.noise:
-            X += torch.normal(mean=0, std=self.stds)
+        if self.transform:
+            X = self.transform(X)
+        
+
+        # Target
         target = None
         y_interval = self.data[:, mid:end]
         if self.mode == 'all':

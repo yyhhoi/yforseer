@@ -144,9 +144,9 @@ def convert_to_array(combined_df_pth:str, start_datetime: pd.Timestamp,
     # ================================
     # Normalize
     # ================================
-    mu = ticker_array.mean(axis=0)
-    std = ticker_array.std(axis=0)
-    ticker_array = (ticker_array - mu) / std
+    mu = ticker_array.mean(axis=1)
+    std = ticker_array.std(axis=1)
+    ticker_array = (ticker_array - mu.reshape(-1, 1)) / std.reshape(-1, 1)
     print('Ticker array shape = %s' % str(ticker_array.shape))
 
     # ================================
