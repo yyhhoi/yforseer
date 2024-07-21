@@ -4,16 +4,14 @@ import torch
 from torch.utils.data import DataLoader
 from yforseer.datasets import StockDataset
 from yforseer.trainers import StockNetTrainer
-from yforseer.augmentation import AddNoise
+from yforseer.evaluate import evaluate_stock_trend_prediction
 import mlflow
 from tqdm import tqdm
 
 
 batch_size = 32
-epochs = 20
+epochs = 50
 lr = 0.0001
-noise_lam = 0.05
-noise_A = 0.5
 test_frac = 0.1
 memory = 60
 lookahead = 30
@@ -25,16 +23,16 @@ mlflow.set_tracking_uri(remote_server_uri)
 mlflow.set_experiment("Stock last price prediction")
 with mlflow.start_run():
     mlflow.log_params({'batch_size': batch_size, 'epochs': epochs, 'lr':lr, 'memory':memory, 'lookahead':lookahead,
-                    'test_frac':test_frac, 'noise_lam':noise_lam, 'noise_A':noise_A})
+                    'test_frac':test_frac})
 
 
     # Load data
     load_array_pth = 'data/yahoo/artifacts/data_array.npz'
-    data = torch.from_numpy(np.load(load_array_pth)['data']).to(torch.float32)
+    loaded_data = np.load(load_array_pth)
+    data = torch.from_numpy(loaded_data['data']).to(torch.float32)
+    mu, std = loaded_data['mu'], loaded_data['std']
 
-    # Augmentation function
-    stds = torch.diff(data, dim=1).std(dim=1).numpy()
-    addnoise_transform = AddNoise(stds, noise_lam, noise_A)
+
 
     # Datasets and dataloaders
     num_days = data.shape[1]
@@ -42,7 +40,7 @@ with mlflow.start_run():
     train_size = num_days - test_size
     train_data = data[:, :train_size]
     test_data = data[:, train_size:]
-    train_dataset = StockDataset(data = train_data, memory=memory, lookahead=lookahead, mode='last', transform=addnoise_transform)
+    train_dataset = StockDataset(data = train_data, memory=memory, lookahead=lookahead, mode='last')
     test_dataset = StockDataset(data = test_data, memory=memory, lookahead=lookahead, mode='last')
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size)
@@ -50,7 +48,7 @@ with mlflow.start_run():
     print('test_dataset:', len(test_dataset))
 
     # Train
-    trainer = StockNetTrainer(lr=1e-4)    
+    trainer = StockNetTrainer(lr=lr)    
     for epoch in tqdm(range(epochs)):
         train_loss_list, test_loss_list = [], []
         trainer.model.train()
@@ -60,15 +58,37 @@ with mlflow.start_run():
             bar.set_description(f'train_loss={train_loss:.4f}')
                                 
         trainer.model.eval()
+        all_x_test = []
+        all_y_pred = []
+        all_y_test = []
         for X_test, y_test in (bar := tqdm(test_dataloader, leave=False)):
-            test_loss, _ = trainer.test(X_test, y_test)
+            test_loss, y_pred = trainer.test(X_test, y_test)
             test_loss_list.append(test_loss)
             bar.set_description(f'test_loss={test_loss:.4f}')
+            all_x_test.append(X_test.detach().numpy())
+            all_y_pred.append(y_pred.detach().numpy().squeeze())
+            all_y_test.append(y_test.detach().numpy().squeeze())
 
+        all_x_test = np.concatenate(all_x_test, axis=0)
+        all_y_pred = np.concatenate(all_y_pred, axis=0)
+        all_y_test = np.concatenate(all_y_test, axis=0)
+        all_x_test = all_x_test * std.reshape(1, -1, 1) + mu.reshape(1, -1, 1)
+        all_y_pred = all_y_pred * std.reshape(1, -1) + mu.reshape(1, -1)
+        all_y_test = all_y_test * std.reshape(1, -1) + mu.reshape(1, -1)
+        trend_accuracies, buy_returns, sell_returns = evaluate_stock_trend_prediction(all_x_test[:, :, -1], all_y_pred, all_y_test, batch=True)
+
+        # Log prediction
+        np.savez('predictions.npz', x_test=all_x_test, y_pred=all_y_pred, y_test=all_y_test)
+        mlflow.log_artifact('predictions.npz')
 
         # Log metrics
         mlflow.log_metric('train_loss', np.mean(train_loss_list), step=epoch)
         mlflow.log_metric('test_loss', np.mean(test_loss_list), step=epoch)
-        
+        mlflow.log_metric('trend_accuracy_MD', np.median(trend_accuracies), step=epoch)
+        mlflow.log_metric('trend_accuracy_LQ', np.quantile(trend_accuracies, 0.25), step=epoch)
+        mlflow.log_metric('buy_return_MD', np.median(buy_returns), step=epoch)
+        mlflow.log_metric('buy_return_LQ', np.quantile(buy_returns, 0.25), step=epoch)
+        mlflow.log_metric('sell_return_MD', np.median(sell_returns), step=epoch)
+        mlflow.log_metric('sell_return_LQ', np.quantile(sell_returns, 0.25), step=epoch)
     # Log model
     mlflow.pytorch.log_model(trainer.model, 'model')
