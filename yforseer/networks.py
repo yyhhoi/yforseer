@@ -73,9 +73,10 @@ class StockNet(nn.Module):
         
         out = self.flatten_and_transform(out)  # -> (M*N, 200)
         out = out.reshape(M, N, out.shape[1])  # -> (M, N, 200)
-        out, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
-        out = self.linear_layer_1(out)
-        out, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
-        out = self.linear_layer_final(out)  # (M, N, 200) -> (M, N, 1)
+        out_r, _ = self.attn_layer1(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
+        out = self.linear_layer_1(out + out_r)
+        out_r, _ = self.attn_layer2(out, out, out, need_weights = False, average_attn_weights = False)  # -> (M, N, 200)
+        out = self.linear_layer_final(out + out_r)  # (M, N, 200) -> (M, N, 1)
+        out = out + X[:, :, [-1]]
 
         return out
