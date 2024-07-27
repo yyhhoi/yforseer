@@ -1,18 +1,17 @@
-from .networks import StockNet
+from .networks import StockNet, StockTCNN
 import torch
 import torch.nn as nn
 
-
-
-class StockNetTrainer:
-    def __init__(self, lr):
+class Trainer:
+    def __init__(self, lr, model):
         self.lr = lr
         self.criterion = nn.MSELoss()
-        self.model = StockNet()
+        self.model = model
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
     def forward_pass(self, X, y):
         y_pred = self.model(X)
+        # breakpoint()
         loss = self.criterion(y_pred, y)
         return loss, y_pred
     
@@ -27,3 +26,15 @@ class StockNetTrainer:
         train_loss.backward()
         self.optimizer.step()
         return train_loss.item(), y_pred
+
+
+class StockNetTrainer(Trainer):
+    def __init__(self, lr):
+        model = StockNet()
+        super().__init__(lr, model)
+
+
+class StockTCNNTrainer(Trainer):
+    def __init__(self, lr, input_size, output_size, num_channels, kernel_size, dropout):
+        model = StockTCNN(input_size, output_size, num_channels, kernel_size, dropout)
+        super().__init__(lr, model)

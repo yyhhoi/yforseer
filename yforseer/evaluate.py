@@ -34,8 +34,12 @@ def evaluate_stock_trend_prediction(xlast: NDArray, ypred: NDArray, ytest: NDArr
     trend_test = np.sign(change_test)
     if batch:
         trend_accuracy = np.mean(trend_pred == trend_test, axis=1).squeeze()
+        null_accuracy_rise = np.mean(trend_test > 0, axis=1).squeeze()
+        null_accuracy_drop = np.mean(trend_test < 0, axis=1).squeeze()
     else:
         trend_accuracy = np.mean(trend_pred == trend_test)
+        null_accuracy_rise = np.mean(trend_test > 0)
+        null_accuracy_drop = np.mean(trend_test < 0)
 
 
     # Buy return rate
@@ -64,6 +68,6 @@ def evaluate_stock_trend_prediction(xlast: NDArray, ypred: NDArray, ytest: NDArr
         sell_weights = np.abs(change_pred_fall) / np.abs(change_pred_fall).sum()
         sell_return = (-change_test_fall * sell_weights).sum()
 
-    return trend_accuracy, buy_return, sell_return
+    return (trend_accuracy, null_accuracy_rise, null_accuracy_drop), buy_return, sell_return
 
 
