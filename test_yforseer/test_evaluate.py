@@ -23,14 +23,33 @@ class TestEvaluate(unittest.TestCase):
         ypred_batch = np.repeat(ypred.reshape(1, -1) , axis=0, repeats=2)
         ytest_batch = np.repeat(ytest.reshape(1, -1) , axis=0, repeats=2)
         a, b, c = evaluate_stock_trend_prediction(xlast, ypred, ytest, batch=False)
-        d, e, f = evaluate_stock_trend_prediction(xlast_batch, ypred_batch, ytest_batch, batch=True)
 
-        np.testing.assert_array_almost_equal(a, 0.6666666666666666)
-        np.testing.assert_array_almost_equal(b, 0.8900468384074941)
-        np.testing.assert_array_almost_equal(c, 0.4892857142857143)
-        np.testing.assert_array_almost_equal(d, np.array([0.66666667, 0.66666667]))
-        np.testing.assert_array_almost_equal(e, np.array([0.89004684, 0.89004684]))
-        np.testing.assert_array_almost_equal(f, np.array([0.48928571, 0.48928571]))
+        # Test non batch mode
+        expected_buy_returns = np.array([1., 0.89004684, 0.89004684])
+        expected_perfect_buy_returns = np.array([0.99999999, 0.76782376, 0.76782376])
+        expected_sell_returns = np.array([0.3, 0.48928571, 0.48928571])
+        expected_perfect_sell_returns = np.array([0.29999999, 0.71799999, 0.71799999])
+        np.testing.assert_array_almost_equal(a[0], 0.6666666666666666)
+        np.testing.assert_array_almost_equal(a[1], 0.5)
+        np.testing.assert_array_almost_equal(a[2], 0.5)
+        np.testing.assert_array_almost_equal(b[0], expected_buy_returns)
+        np.testing.assert_array_almost_equal(b[1], expected_perfect_buy_returns)
+        np.testing.assert_array_almost_equal(c[0], expected_sell_returns)
+        np.testing.assert_array_almost_equal(c[1], expected_perfect_sell_returns)
+
+        # Test batch mode
+        d, e, f = evaluate_stock_trend_prediction(xlast_batch, ypred_batch, ytest_batch, batch=True)
+        expected_buy_returns = np.array([[1., 0.89004684, 0.89004684], [1., 0.89004684, 0.89004684]])
+        expected_perfect_buy_returns = np.array([[0.99999999, 0.76782376, 0.76782376], [0.99999999, 0.76782376, 0.76782376]])
+        expected_sell_returns = np.array([[0.3, 0.48928571 , 0.48928571], [0.3, 0.48928571 , 0.48928571]])
+        expected_perfect_sell_returns = np.array([[0.29999999 , 0.71799999 , 0.71799999], [0.29999999 , 0.71799999 , 0.71799999]])
+        np.testing.assert_array_almost_equal(d[0], np.array([0.66666667, 0.66666667]))
+        np.testing.assert_array_almost_equal(d[1], np.array([0.5, 0.5]))
+        np.testing.assert_array_almost_equal(d[2], np.array([0.5, 0.5]))
+        np.testing.assert_array_almost_equal(e[0], expected_buy_returns)
+        np.testing.assert_array_almost_equal(e[1], expected_perfect_buy_returns)
+        np.testing.assert_array_almost_equal(f[0], expected_sell_returns)
+        np.testing.assert_array_almost_equal(f[1], expected_perfect_sell_returns)
 
 
 
