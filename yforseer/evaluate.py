@@ -83,17 +83,18 @@ def compute_return_rate(change_pred: NDArray, change_test: NDArray, batch: bool,
     # Buy or Sell mode
     if mode == 'buy':
         mask = change_pred <= 0  # Focus on buying. Exclude negative or null (zero-change) predictions
-        multiplier = 1 
+        trade_sign = 1 
     elif mode == 'sell':
         mask = change_pred >= 0
-        multiplier = -1
+        trade_sign = -1
     else:
         raise ValueError("mode must be either 'buy' or 'sell'.")
 
     # Sort    
     change_pred_copied[mask] = 0
     change_test_copied[mask] = 0
-    sorted_inds = np.argsort(multiplier*change_pred_copied, axis=-1)
+    sorted_inds = np.argsort(trade_sign*change_pred_copied, axis=-1)
+    perfect_sorted_inds = np.argsort(trade_sign*change_test_copied, axis=-1)
     M = sorted_inds.shape[-1]
 
     trade_returns = []
@@ -103,19 +104,25 @@ def compute_return_rate(change_pred: NDArray, change_test: NDArray, batch: bool,
         # Select top 1, 3, all
         if batch:
             selected_tops_inds = sorted_inds[:, -i:]
+            selected_perfect_sorted_tops_inds = perfect_sorted_inds[:, -i:]
             sorted_change_pred = np.take_along_axis(change_pred_copied, selected_tops_inds, axis=1)
             sorted_change_test = np.take_along_axis(change_test_copied, selected_tops_inds, axis=1)
 
+            sorted_perfect_change_test = np.take_along_axis(change_test_copied, selected_perfect_sorted_tops_inds, axis=1)
+
         else:
             selected_tops_inds = sorted_inds[-i:]
+            selected_perfect_sorted_tops_inds = perfect_sorted_inds[:, -i:]
             sorted_change_pred = change_pred_copied[selected_tops_inds]
             sorted_change_test = change_test_copied[selected_tops_inds]
+            sorted_perfect_change_test = change_test_copied[selected_perfect_sorted_tops_inds]
+
 
         # Compute return based on prediction
-        trade_return = weighted_return(sorted_change_pred, multiplier*sorted_change_test, batch=batch)
+        trade_return = weighted_return(sorted_change_pred, trade_sign*sorted_change_test, batch=batch)
 
         # Compute return with perfect prediction
-        perfect_trade_return = weighted_return(sorted_change_test, multiplier*sorted_change_test, batch=batch)
+        perfect_trade_return = weighted_return(sorted_perfect_change_test, trade_sign*sorted_perfect_change_test, batch=batch)
 
         # Store data
         trade_returns.append(trade_return)

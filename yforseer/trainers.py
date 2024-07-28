@@ -21,11 +21,29 @@ class Trainer:
         return test_loss.item(), y_pred
     
     def train(self, X_train, y_train):
+
         self.optimizer.zero_grad()
         train_loss, y_pred = self.forward_pass(X_train, y_train)
         train_loss.backward()
         self.optimizer.step()
         return train_loss.item(), y_pred
+    
+    def save(self, pth, epoch):
+        checkpoint = { 
+            'epoch': epoch,
+            'model': self.model.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'lr': self.lr
+            }
+        torch.save(checkpoint, pth)
+
+    def load(self, pth):
+        checkpoint = torch.load(pth)
+        self.model.load_state_dict(checkpoint['model'])
+        self.model.eval()
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        self.lr = checkpoint['lr']
+
 
 
 class StockNetTrainer(Trainer):
