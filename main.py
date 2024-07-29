@@ -14,8 +14,8 @@ def yforseer_pipeline():
     # # ==========================================================
     # # Combine dataframes
     # # ==========================================================
-    combine_raw_csvs(raw_data_dir = 'data/yahoo/tickerdaily', 
-                     save_df_pth = 'data/yahoo/artifacts/combined.csv')
+    # combine_raw_csvs(raw_data_dir = 'data/yahoo/tickerdaily', 
+    #                  save_df_pth = 'data/yahoo/artifacts/combined.csv')
     
     # # ==========================================================
     # # Convert to array

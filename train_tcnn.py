@@ -79,9 +79,9 @@ with mlflow.start_run():
         all_x_test = np.concatenate(all_x_test, axis=0)
         all_y_pred = np.concatenate(all_y_pred, axis=0)
         all_y_test = np.concatenate(all_y_test, axis=0)
-        all_x_test = all_x_test * std.reshape(1, -1, 1) + mu.reshape(1, -1, 1)
-        all_y_pred = all_y_pred * std.reshape(1, -1) + mu.reshape(1, -1)
-        all_y_test = all_y_test * std.reshape(1, -1) + mu.reshape(1, -1)
+        all_x_test = all_x_test * std + mu
+        all_y_pred = all_y_pred * std + mu
+        all_y_test = all_y_test * std + mu
         (trend_acc, rise_acc, drop_acc), buy_returns, sell_returns = evaluate_stock_trend_prediction(all_x_test[:, :, -1], all_y_pred, all_y_test, batch=True)
 
         # Log prediction
