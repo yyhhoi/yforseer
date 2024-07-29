@@ -60,7 +60,7 @@ with mlflow.start_run():
         train_loss_list, test_loss_list = [], []
         trainer.model.train()
         for X_train, y_train in (bar := tqdm(train_dataloader, leave=False)):
-            train_loss, _ = trainer.train(X_trai.to(device), y_train.to(device))
+            train_loss, _ = trainer.train(X_train.to(device), y_train.to(device))
             train_loss_list.append(train_loss)
             bar.set_description(f'train_loss={train_loss:.4f}')
                                 
