@@ -28,8 +28,9 @@ with mlflow.start_run():
                     'test_frac':test_frac})
 
 
+
     # Load data
-    load_array_pth = 'data/yahoo/artifacts/data_array.npz'
+    load_array_pth = 'data/yahoo/artifacts/data_array_diff.npz'
     loaded_data = np.load(load_array_pth)
     data = torch.from_numpy(loaded_data['data']).to(torch.float32)
     mu, std = loaded_data['mu'], loaded_data['std']
@@ -82,7 +83,7 @@ with mlflow.start_run():
         all_x_test = all_x_test * std + mu
         all_y_pred = all_y_pred * std + mu
         all_y_test = all_y_test * std + mu
-        (trend_acc, rise_acc, drop_acc), buy_returns, sell_returns = evaluate_stock_trend_prediction(all_x_test[:, :, -1], all_y_pred, all_y_test, batch=True)
+        (trend_acc, rise_acc, drop_acc), buy_returns, sell_returns = evaluate_stock_trend_prediction(all_x_test[:, :, -1], all_y_pred, all_y_test)
 
         # Log prediction
         np.savez('predictions.npz', x_test=all_x_test, y_pred=all_y_pred, y_test=all_y_test)

@@ -46,3 +46,25 @@ class StockDataset(Dataset):
         else:
             raise ValueError('Invalid mode from StockDataset constructor. Choose from "last", "all" or "stats".')
         return X, target
+
+
+class StockDiffDataset(StockDataset):
+    def __init__(self, data, memory):
+        super().__init__(data=data, memory=memory, lookahead=1, mode='last', transform=None)
+
+
+    def __getitem__(self, idx):
+        
+        start, mid, end = idx, idx+self.memory, idx+self.window
+        if end > self.n_days:
+            raise IndexError('Index out of bounds')
+        
+        # Features
+        prices = self.data[:, start:end]  # (N_tickers, window)
+        price_diff = torch.diff(prices, dim=1)  # (N_tickers, window-1)
+        # price_frac = price_diff / prices[:, :-1]  # (N_tickers, window-1)
+
+        X = price_diff[:, :-1]  # (N_tickers, window-2)
+        y = price_diff[:, [-1]]  # (N_tickers, 1)
+
+        return X, y, prices
