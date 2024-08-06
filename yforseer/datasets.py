@@ -6,6 +6,8 @@ class StockDataset(Dataset):
         self.data = data  # (N_tickers, N_days), torch.tensor, float32
         self.memory = memory
         self.lookahead = lookahead
+        if mode not in ['last', 'all', 'stats']:
+            raise ValueError('Invalid mode from StockDataset constructor. Choose from "last", "all" or "stats".')
         self.mode = mode  # last/all/stats
         self.transform = transform
         self.window = memory + lookahead
@@ -49,8 +51,8 @@ class StockDataset(Dataset):
 
 
 class StockDiffDataset(StockDataset):
-    def __init__(self, data, memory, lookahead=1, return_price=False):
-        super().__init__(data=data, memory=memory, lookahead=lookahead, mode='last', transform=None)
+    def __init__(self, data, memory, lookahead=1, mode='last', return_price=False):
+        super().__init__(data=data, memory=memory, lookahead=lookahead, mode=mode, transform=None)
         self.return_price = return_price
 
 
@@ -63,12 +65,28 @@ class StockDiffDataset(StockDataset):
         # Features
         prices = self.data[:, start:end]  # (N_tickers, window)
         Xprices = self.data[:, start:mid]
-        yprice = self.data[:, [end-1]]
         
+        if self.mode == 'last':
+            yprices = self.data[:, [end-1]]
+        elif self.mode == 'all':
+            yprices = self.data[:, mid:end]
+        else:
+            raise ValueError('Invalid mode for StockDiffDataset. Choose from "last" or "all".')
+
+
+        # Difference
         Xdiff = torch.diff(Xprices, dim=1)
         xlast = Xprices[:, [-1]]
-        ydiff = yprice - xlast
-        if self.return_price:
-            return Xdiff, ydiff, Xprices, yprice, prices
+        ydiff_0 = yprices[:, [0]] - xlast
+        if (self.lookahead > 1):
+            ydiff_rest = torch.diff(yprices, dim=1)
+            ydiff = torch.cat([ydiff_0, ydiff_rest], dim=1)
         else:
-            return Xdiff, ydiff, Xprices, yprice
+            ydiff = ydiff_0
+
+
+
+        if self.return_price:
+            return Xdiff, ydiff, Xprices, yprices, prices
+        else:
+            return Xdiff, ydiff, Xprices, yprices
