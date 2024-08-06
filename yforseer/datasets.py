@@ -49,8 +49,9 @@ class StockDataset(Dataset):
 
 
 class StockDiffDataset(StockDataset):
-    def __init__(self, data, memory):
-        super().__init__(data=data, memory=memory, lookahead=1, mode='last', transform=None)
+    def __init__(self, data, memory, lookahead=1, return_price=False):
+        super().__init__(data=data, memory=memory, lookahead=lookahead, mode='last', transform=None)
+        self.return_price = return_price
 
 
     def __getitem__(self, idx):
@@ -61,10 +62,13 @@ class StockDiffDataset(StockDataset):
         
         # Features
         prices = self.data[:, start:end]  # (N_tickers, window)
-        price_diff = torch.diff(prices, dim=1)  # (N_tickers, window-1)
-        # price_frac = price_diff / prices[:, :-1]  # (N_tickers, window-1)
-
-        X = price_diff[:, :-1]  # (N_tickers, window-2)
-        y = price_diff[:, [-1]]  # (N_tickers, 1)
-
-        return X, y, prices
+        Xprices = self.data[:, start:mid]
+        yprice = self.data[:, [end-1]]
+        
+        Xdiff = torch.diff(Xprices, dim=1)
+        xlast = Xprices[:, [-1]]
+        ydiff = yprice - xlast
+        if self.return_price:
+            return Xdiff, ydiff, Xprices, yprice, prices
+        else:
+            return Xdiff, ydiff, Xprices, yprice
