@@ -53,6 +53,6 @@ class StockNetTrainer(Trainer):
 
 
 class StockTCNNTrainer(Trainer):
-    def __init__(self, lr, input_size, output_size, num_channels, kernel_size, dropout):
-        model = StockTCNN(input_size, output_size, num_channels, kernel_size, dropout)
+    def __init__(self, lr, input_size, output_T, num_channels, kernel_size, dropout):
+        model = StockTCNN(input_size, output_T, num_channels, kernel_size, dropout)
         super().__init__(lr, model)

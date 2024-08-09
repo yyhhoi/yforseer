@@ -146,21 +146,25 @@ class TemporalConvNet(nn.Module):
 
 
 class StockTCNN(nn.Module):
-    def __init__(self, input_size, output_size, num_channels, kernel_size, dropout):
+    def __init__(self, input_size, output_T, num_channels, kernel_size, dropout):
         super(StockTCNN, self).__init__()
         self.tcn = TemporalConvNet(input_size, num_channels, kernel_size=kernel_size, dropout=dropout)
-        self.linear1 = nn.Linear(num_channels[-1], output_size)
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(2, 1)
+        self.avgpool = nn.AdaptiveAvgPool1d(output_T)
+
+        self.linear1 = nn.Linear(output_T, output_T)
+        self.act_func = nn.Tanh()
+        self.linear2 = nn.Linear(output_T+1, output_T)
+        
         self.init_weights()
 
     def init_weights(self):
         self.linear1.weight.data.normal_(0, 0.01)
         self.linear2.weight.data.normal_(0, 0.01)
-
+        
     def forward(self, x):
         out = self.tcn(x)
-        out = self.linear1(out[:, :, -1]).unsqueeze(2)
-        out = self.relu(torch.cat([out, x[:, :, [-1]]], dim=2))
+        out = self.avgpool(out)
+        out = self.linear1(out)
+        out = self.act_func(torch.cat([out, x[:, :, [-1]]], dim=2))
         out = self.linear2(out)
         return out
